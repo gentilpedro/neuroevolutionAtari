@@ -1,0 +1,6 @@
+.env
+dados/
+resultados/
+node_modules/
+__pycache__/
+*.pyc
