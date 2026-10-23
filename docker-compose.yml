@@ -1,0 +1,16 @@
+# Painel do trabalho de neuroevolução (Asterix/Freeway) — https://neuroevolution.aamora.com.br
+# Na VPS: /opt/neuroevolution. Nginx faz proxy para 127.0.0.1:5103.
+name: neuroevolution
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5103:8080"
+    env_file: .env          # CONTROLE_SENHA=...
+    environment:
+      PROCESSOS: "2"
+    volumes:
+      - ./dados:/data
+    cpus: 1.5
+    mem_limit: 1g

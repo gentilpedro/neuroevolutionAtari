@@ -1,0 +1,5 @@
+dados/
+.env
+__pycache__/
+*.pyc
+resultados/

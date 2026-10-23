@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neuroevolução no Atari</title>
+<meta name="description" content="Uma rede neural aprende a jogar Atari por evolução, ao vivo: o melhor agente joga lado a lado com um agente aleatório. Trabalho de Fundamentos de IA, UniSenac Pelotas.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d64bd'/%3E%3Cpath d='M16 6l6 8h-4v12h-4V14h-4z' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f7f6f2;
+  --surface: #fdfdfb;
+  --surface-2: #efeee8;
+  --ink: #111110;
+  --ink-2: #45443f;
+  --muted: #66655f;
+  --grid: #e3e2db;
+  --axis: #b9b8ad;
+  --border: rgba(17,17,16,0.12);
+  --accent: #1f6bc9;      /* linhas e links */
+  --accent-btn: #1d64bd;  /* fundo de botão: branco por cima passa de 4,5:1 */
+  --accent-ink: #ffffff;
+  --s1: #1f6bc9;          /* melhor / evoluído */
+  --s2: #c94a16;          /* média */
+  --s3: #13936a;
+  --s4: #b07800;          /* elite */
+  --band: rgba(31,107,201,0.12);
+  --good: #0e7a30;
+  --warning: #b07800;
+  --critical: #b42323;
+  --critical-bg: #fbeceb;
+  --arena: #0d0e11;
+  --arena-2: #17191e;
+  --arena-ink: #f1f0ea;
+  --arena-muted: #a9a8a0;
+  --evo: #6fb0ff;
+  --display: "Chakra Petch", "Atkinson Hyperlegible", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0e0e0d; --surface: #191918; --surface-2: #22221f;
+    --ink: #f4f3ee; --ink-2: #c9c8bf; --muted: #a19f96;
+    --grid: #2b2b28; --axis: #4a4a44; --border: rgba(255,255,255,0.12);
+    --accent: #5b9cf0; --accent-btn: #2563b8;
+    --s1: #5b9cf0; --s2: #e8743f; --s3: #2bb585; --s4: #d9a21b;
+    --band: rgba(91,156,240,0.14);
+    --good: #4cc76a; --warning: #d9a21b; --critical: #ff8a80; --critical-bg: #3a1d1b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0e0e0d; --surface: #191918; --surface-2: #22221f;
+  --ink: #f4f3ee; --ink-2: #c9c8bf; --muted: #a19f96;
+  --grid: #2b2b28; --axis: #4a4a44; --border: rgba(255,255,255,0.12);
+  --accent: #5b9cf0; --accent-btn: #2563b8;
+  --s1: #5b9cf0; --s2: #e8743f; --s3: #2bb585; --s4: #d9a21b;
+  --band: rgba(91,156,240,0.14);
+  --good: #4cc76a; --warning: #d9a21b; --critical: #ff8a80; --critical-bg: #3a1d1b;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 16px/1.55 var(--body); font-variant-numeric: tabular-nums;
+  scrollbar-color: var(--axis) transparent; caret-color: var(--accent);
+}
+::selection { background: var(--accent-btn); color: #fff; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: 16px; top: -48px; z-index: 10; background: var(--accent-btn); color: #fff; padding: 8px 12px; border-radius: 8px; }
+.skip:focus { top: 12px; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding: 24px 16px 56px; }
+
+/* ---------- cabeçalho ---------- */
+.top { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(28px, 4vw, 44px); line-height: 1.05; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+h1 .jogo { color: var(--accent); }
+.sub { margin: 8px 0 0; color: var(--ink-2); max-width: 62ch; }
+.curso { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.status { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-weight: 700; font-size: 15px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.status[data-s="rodando"] .dot { background: var(--good); }
+.status[data-s="pausado"] .dot { background: var(--warning); }
+.status[data-s="concluido"] .dot { background: var(--accent); }
+.status[data-s="erro"] .dot, .status[data-s="interrompido"] .dot, .status[data-s="offline"] .dot { background: var(--critical); }
+@media (prefers-reduced-motion: no-preference) {
+  .status[data-s="rodando"] .dot { animation: pulso 1.6s var(--ease) infinite; }
+}
+@keyframes pulso { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 55%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--axis); background: var(--surface); color: var(--ink); font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; transition: background-color .15s, border-color .15s; }
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn.primario { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--accent-ink); }
+.btn.primario:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-btn) 88%, #000); }
+.btn.perigo { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, transparent); }
+.btn.perigo:hover:not(:disabled) { background: var(--critical-bg); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.sm { min-height: 34px; padding: 5px 10px; font-size: 14px; }
+.btn.so-icone { padding: 8px; width: 40px; }
+
+/* ---------- avisos ---------- */
+.banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-radius: 12px; margin-bottom: 16px; border: 1px solid color-mix(in srgb, var(--critical) 45%, transparent); background: var(--critical-bg); color: var(--ink); }
+.banner strong { color: var(--critical); }
+.banner[hidden] { display: none; }
+
+/* ---------- layout ---------- */
+.layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1180px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .col-side { position: sticky; top: 16px; }
+}
+.col-main { display: grid; gap: 20px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; min-width: 0; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 21px; line-height: 1.2; letter-spacing: -0.01em; margin: 0; }
+h3 { font-size: 16px; margin: 0 0 6px; }
+.cab { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
+.nota { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* ---------- arena ---------- */
+.arena { background: var(--arena); color: var(--arena-ink); border-radius: 18px; padding: 18px; box-shadow: 0 12px 32px -18px rgba(0,0,0,.55); }
+.arena .cab { margin-bottom: 14px; }
+.arena h2 { color: var(--arena-ink); display: flex; align-items: center; gap: 10px; }
+.aovivo { display: inline-flex; align-items: center; gap: 6px; font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: .08em; padding: 3px 9px; border-radius: 6px; background: #c62828; color: #fff; }
+.aovivo[data-off] { background: var(--arena-2); color: var(--arena-muted); }
+.arena .nota { color: var(--arena-muted); }
+.duelo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.lado { margin: 0; min-width: 0; }
+.tela { position: relative; aspect-ratio: 160 / 210; max-height: 64vh; margin: 0 auto; background: #000; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.tela img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+.tela-msg { position: absolute; inset: 0; display: grid; place-content: center; gap: 6px; padding: 16px; text-align: center; background: rgba(5,6,8,.82); color: var(--arena-ink); font-size: 15px; }
+.tela-msg[hidden] { display: none; }
+.tela-msg b { font-family: var(--display); font-size: 18px; }
+.fim-chip { position: absolute; top: 10px; left: 10px; font-family: var(--display); font-weight: 700; font-size: 14px; padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,.75); color: #fff; }
+.fim-chip[hidden] { display: none; }
+.lado figcaption { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 12px 2px 0; }
+.quem { font-weight: 700; font-size: 16px; line-height: 1.25; }
+.quem small { display: block; font-weight: 400; color: var(--arena-muted); font-size: 14px; }
+.placar { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 4.6vw, 54px); line-height: 1; text-align: right; }
+.placar small { display: block; font-family: var(--body); font-weight: 400; font-size: 13px; color: var(--arena-muted); margin-top: 4px; }
+.lado.evoluido .placar, .lado.evoluido .quem { color: var(--evo); }
+.lado[data-venceu] .tela { box-shadow: inset 0 0 0 3px var(--evo); }
+.lado.aleatorio[data-venceu] .tela { box-shadow: inset 0 0 0 3px var(--arena-ink); }
+
+.veredito { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 18px; align-items: center; margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: var(--arena-2); transition: background-color 1.2s var(--ease); }
+.veredito .num { grid-row: span 2; font-family: var(--display); font-weight: 700; font-size: clamp(40px, 6vw, 68px); line-height: 1; color: var(--evo); }
+.veredito .num[data-vazio] { color: var(--arena-muted); }
+.veredito .frase { font-size: 19px; font-weight: 700; line-height: 1.3; text-wrap: balance; }
+.veredito .fonte { color: var(--arena-muted); font-size: 14px; }
+.veredito.cruzou { background: color-mix(in srgb, var(--evo) 24%, var(--arena-2)); }
+@media (prefers-reduced-motion: reduce) { .veredito { transition: none; } }
+@media (max-width: 560px) {
+  .arena { padding: 14px 12px; border-radius: 14px; }
+  .duelo { gap: 8px; }
+  .lado figcaption { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .placar { text-align: left; }
+  .veredito { grid-template-columns: minmax(0, 1fr); }
+  .veredito .num { grid-row: auto; }
+}
+
+/* ---------- etapas ---------- */
+.etapas { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.etapas li { display: inline-flex; align-items: center; gap: 6px; font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: .03em; color: var(--muted); }
+.etapas li span { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); transition: background-color .25s var(--ease), color .25s var(--ease); }
+.etapas li + li::before { content: ""; width: 10px; height: 2px; background: var(--axis); }
+.etapas li[aria-current="step"] span { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.etapa-txt { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; min-height: 1.55em; }
+
+/* ---------- evolução ---------- */
+.evo-grid { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .evo-grid { grid-template-columns: minmax(0, 1fr) 230px; } }
+.legenda { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--ink-2); margin: 0 0 10px; padding: 0; list-style: none; }
+.legenda i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 7px; }
+.legenda i.caixa { height: 12px; width: 14px; border-radius: 3px; }
+.legenda i.tracejada { background: repeating-linear-gradient(90deg, var(--ink-2) 0 5px, transparent 5px 9px); }
+.grafico { position: relative; height: 340px; }
+.grafico.baixo { height: 230px; }
+.vazio { color: var(--muted); font-size: 15px; padding: 28px 8px; text-align: center; }
+.numeros { margin: 0; display: grid; gap: 14px; align-content: start; }
+.numeros div { border-top: 1px solid var(--border); padding-top: 10px; }
+.numeros dt { font-size: 14px; color: var(--ink-2); font-weight: 700; }
+.numeros dd { margin: 2px 0 0; }
+.numeros .v { display: block; font-family: var(--display); font-weight: 700; font-size: 30px; line-height: 1.1; }
+.numeros .d { display: block; color: var(--muted); font-size: 14px; }
+details.tabela summary { cursor: pointer; color: var(--ink-2); font-size: 15px; margin-top: 12px; }
+
+/* ---------- dois cartões ---------- */
+.dois { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .dois { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; } }
+.replay { display: grid; gap: 14px; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); align-items: start; }
+@media (max-width: 480px) { .replay { grid-template-columns: minmax(0, 1fr); } }
+.replay .tela { width: 100%; max-height: none; }
+.replay-ctl { display: grid; gap: 10px; }
+
+/* ---------- formulários ---------- */
+label { display: block; font-size: 14px; color: var(--ink-2); font-weight: 700; margin-bottom: 4px; }
+input, select { width: 100%; min-height: 40px; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--axis); background: var(--page); color: var(--ink); font: inherit; font-size: 15px; }
+input::placeholder { color: var(--muted); }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset:disabled { opacity: .6; }
+.campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.campos .cheio { grid-column: 1 / -1; }
+.dica { font-size: 14px; color: var(--muted); margin: 6px 0 0; }
+.msg { font-size: 15px; margin: 10px 0 0; min-height: 1.55em; color: var(--ink-2); }
+.msg.err { color: var(--critical); font-weight: 700; }
+
+/* ---------- controle ---------- */
+.controle { padding: 0; }
+.controle > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; }
+.controle > summary::-webkit-details-marker { display: none; }
+.controle[open] > summary { border-bottom: 1px solid var(--border); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
+.controle-corpo { padding: 16px 18px 18px; display: grid; gap: 16px; }
+.acesso { display: grid; gap: 8px; }
+.acesso-linha { display: flex; gap: 8px; }
+.acesso-linha input { flex: 1; }
+.acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.acoes .cheio { grid-column: 1 / -1; }
+details.avancado summary { cursor: pointer; font-weight: 700; color: var(--ink-2); font-size: 15px; margin-bottom: 10px; }
+.perigo-zona { border-top: 1px solid var(--border); padding-top: 14px; }
+
+/* ---------- resultados ---------- */
+.destaque { margin: 0 0 14px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); font-size: 16px; }
+.destaque[hidden] { display: none; }
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+caption { text-align: left; }
+th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { color: var(--ink-2); font-weight: 700; font-size: 14px; white-space: nowrap; }
+td.n, th.n { text-align: right; white-space: nowrap; }
+td .det { display: block; color: var(--muted); font-size: 13px; }
+.tag { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--surface-2); color: var(--ink-2); margin-right: 6px; }
+.razao { font-family: var(--display); font-weight: 700; }
+.razao.bom { color: var(--good); }
+.acoes-linha { display: flex; gap: 14px; flex-wrap: nowrap; white-space: nowrap; }
+.lnk { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; color: var(--accent); background: none; border: 0; padding: 0; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; }
+.lnk:hover { text-decoration: underline; }
+.lnk.perigo { color: var(--critical); margin-left: 10px; }
+.lnk svg.i { width: 16px; height: 16px; }
+.cmp-wrap { margin-top: 16px; }
+
+/* ---------- log ---------- */
+.log { font-family: var(--mono); font-size: 13px; background: var(--page); border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 220px; overflow: auto; color: var(--ink-2); white-space: pre-wrap; }
+
+/* ---------- tutorial ---------- */
+.tutorial { padding: 0; }
+.tutorial > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 16px 18px; }
+.tutorial > summary::-webkit-details-marker { display: none; }
+.tutorial > summary .seta { transition: transform .2s var(--ease); }
+.tutorial[open] > summary .seta { transform: rotate(90deg); }
+.tutorial > summary .nota { margin-left: auto; }
+.tut { padding: 0 18px 18px; }
+.tut-lead { margin: 0 0 16px; color: var(--ink-2); max-width: 72ch; font-size: 17px; }
+.passos { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 10px; counter-reset: passo; }
+.passos li { counter-increment: passo; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; padding: 4px 0; color: var(--ink-2); }
+.passos li::before { content: counter(passo); display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent-btn); color: var(--accent-ink); font-family: var(--display); font-weight: 700; }
+.passos strong, .partes strong, .faq strong { color: var(--ink); }
+.partes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 4px 24px; margin-bottom: 8px; }
+.parte { border-top: 1px solid var(--border); padding: 10px 0 6px; color: var(--ink-2); }
+.parte p { margin: 0; }
+.mais { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+.mais > summary { cursor: pointer; font-weight: 700; }
+.mais .partes { margin-top: 10px; }
+.glossario { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; margin: 10px 0 0; }
+.glossario dt { font-weight: 700; }
+.glossario dd { margin: 0; color: var(--ink-2); }
+@media (max-width: 560px) { .glossario { grid-template-columns: minmax(0, 1fr); } .glossario dd { margin-bottom: 6px; } }
+.faq { margin: 10px 0 0; padding-left: 20px; color: var(--ink-2); }
+.faq li + li { margin-top: 6px; }
+kbd { font-family: var(--mono); font-size: 13px; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--axis); background: var(--surface-2); }
+
+footer { margin-top: 28px; color: var(--muted); font-size: 14px; text-align: center; }
+
+/* ---------- modo telão ---------- */
+body.telao { font-size: 18px; }
+body.telao .so-painel { display: none !important; }
+body.telao .layout { grid-template-columns: minmax(0, 1fr); }
+body.telao .wrap { max-width: 1600px; }
+body.telao .tela { max-height: 70vh; }
+body.telao .grafico { height: 42vh; }
+body.telao .quem { font-size: 20px; }
+body.telao .veredito .frase { font-size: 24px; }
+.sair-telao { display: none; }
+body.telao .sair-telao { display: inline-flex; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4.5h4.5"/></symbol>
+  <symbol id="i-tema" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></symbol>
+  <symbol id="i-telao" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="1.5"/><path d="M8.5 20h7M12 16.5V20"/></symbol>
+  <symbol id="i-ajuda" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2.2-2.4 3.7M12 17.2v.1"/></symbol>
+  <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-aberto" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 7.7-1.5"/></symbol>
+  <symbol id="i-baixar" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></symbol>
+  <symbol id="i-lixo" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9L17.5 7"/></symbol>
+  <symbol id="i-olho" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-seta" viewBox="0 0 24 24"><path d="M9 5.5 15.5 12 9 18.5"/></symbol>
+  <symbol id="i-alerta" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.2v.1"/></symbol>
+</svg>
+<a class="skip" href="#arena">Pular para a arena</a>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <h1>Neuroevolução no Atari: <span class="jogo jg-nome">Asterix</span></h1>
+    <p class="sub">Uma rede neural 128 → 16 → <span class="jg-acoes">9</span> aprende a jogar sem backpropagation, só com seleção, elitismo e mutação. Acompanhe ao vivo.</p>
+    <p class="curso">UniSenac Pelotas · Fundamentos de IA · Prof. Pablo De Chiaro</p>
+  </div>
+  <div class="tools">
+    <span class="status" id="status" data-s="parado" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="status-txt">Parado</span></span>
+    <button class="btn so-painel" id="b-telao" type="button" title="Modo telão (tecla T)"><svg class="i" aria-hidden="true"><use href="#i-telao"/></svg>Telão</button>
+    <button class="btn sair-telao" id="b-sair-telao" type="button" title="Sair do modo telão (Esc)"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Sair do telão</button>
+    <a class="btn so-painel" href="#tutorial" id="b-ajuda" title="Como usar (tecla ?)"><svg class="i" aria-hidden="true"><use href="#i-ajuda"/></svg>Como usar</a>
+    <button class="btn so-icone" id="b-tema" type="button" title="Alternar tema claro/escuro"><svg class="i" aria-hidden="true"><use href="#i-tema"/></svg><span class="sr">Alternar tema claro/escuro</span></button>
+  </div>
+</header>
+
+<div class="banner" id="banner-conexao" role="alert" hidden><svg class="i" aria-hidden="true"><use href="#i-alerta"/></svg><div><strong>Sem conexão com o servidor.</strong> Os números abaixo podem estar desatualizados. Tentando de novo a cada poucos segundos…</div></div>
+<div class="banner" id="banner-erro" role="alert" hidden><svg class="i" aria-hidden="true"><use href="#i-alerta"/></svg><div><strong>O treinamento parou com um erro.</strong> <span id="erro-txt"></span></div></div>
+
+<details class="card tutorial so-painel" id="tutorial">
+  <summary><svg class="i seta" aria-hidden="true"><use href="#i-seta"/></svg><h2>Como usar este painel</h2><span class="nota">abre e fecha com um clique</span></summary>
+  <div class="tut">
+    <p class="tut-lead">Este painel treina uma IA para jogar <strong class="jg-nome">Asterix</strong> por <strong>evolução</strong>. Uma população de agentes joga, os que fazem mais pontos têm filhos com pequenas mudanças e, geração após geração, a pontuação sobe. Na arena, o melhor agente joga ao vivo contra um que aperta botões ao acaso.</p>
+
+    <h3>Comece em 3 passos</h3>
+    <ol class="passos">
+      <li><div><strong>Abra “Controle do treinamento”</strong> e digite a senha. Sem senha você só assiste.</div></li>
+      <li><div><strong>Escolha o experimento.</strong> Para o trabalho, use “Todos”: roda A, B e C em sequência.</div></li>
+      <li><div><strong>Clique em Iniciar treinamento.</strong> A arena passa a mostrar o melhor agente de cada geração contra o aleatório.</div></li>
+    </ol>
+
+    <h3>O que cada parte mostra</h3>
+    <div class="partes">
+      <div class="parte"><p><strong>Arena ao vivo:</strong> os dois agentes jogam a mesma partida, lado a lado. A cada rodada o evoluído é trocado pelo campeão mais recente.</p></div>
+      <div class="parte"><p><strong>Veredito:</strong> quantas vezes o evoluído faz os pontos do aleatório. No fim de cada experimento ele é medido em partidas que nunca viu.</p></div>
+      <div class="parte"><p><strong>Etapas:</strong> POPULAÇÃO → AVALIAÇÃO → FITNESS → SELEÇÃO → MUTAÇÃO → NOVA GERAÇÃO. A etapa destacada é a que está rodando.</p></div>
+      <div class="parte"><p><strong>Evolução do fitness:</strong> azul é o melhor de cada geração, laranja a média, a tracejada é o aleatório. <strong>Acima da tracejada, o agente aprendeu.</strong></p></div>
+      <div class="parte"><p><strong>População:</strong> uma barra por agente da geração. As amarelas são a <strong>elite</strong>, copiada sem mudança.</p></div>
+      <div class="parte"><p><strong>Resultados:</strong> cada experimento salvo, com o resultado contra o aleatório, CSV para o relatório e replay.</p></div>
+    </div>
+
+    <details class="mais">
+      <summary>Os experimentos A, B e C: o que esperar</summary>
+      <div class="partes">
+        <div class="parte"><p><strong>A · taxa 1%, intensidade 0,05.</strong> Filhos quase iguais aos pais. Evolui devagar e de forma estável, e pode ficar preso numa estratégia mediana.</p></div>
+        <div class="parte"><p><strong>B · taxa 10%, intensidade 0,20.</strong> Equilíbrio entre explorar e manter o que funciona. Costuma ser o melhor.</p></div>
+        <div class="parte"><p><strong>C · taxa 40%, intensidade 0,50.</strong> Muita variação. Acha ideias novas, mas destrói bons agentes com frequência e a média oscila.</p></div>
+      </div>
+    </details>
+
+    <details class="mais">
+      <summary>Glossário rápido</summary>
+      <dl class="glossario">
+        <dt>Agente</dt><dd>Uma rede neural 128 → 16 → <span class="jg-acoes">9</span>. Lê os 128 bytes da memória do Atari e escolhe uma de <span class="jg-acoes">9</span> ações (<span class="jg-acoes-txt">8 direções ou ficar parado</span>).</dd>
+        <dt>Fitness</dt><dd>A nota do agente: os <span class="jg-unidade">pontos</span> que ele fez numa partida.</dd>
+        <dt>Seleção</dt><dd>Torneio de 3: sorteia 3 agentes e o melhor deles vira pai.</dd>
+        <dt>Mutação</dt><dd><em>Taxa</em> é a fração dos pesos que muda; <em>intensidade</em> é o tamanho da mudança.</dd>
+        <dt>Elite</dt><dd>Os melhores, que passam para a próxima geração sem alteração.</dd>
+        <dt>Semente</dt><dd>Fixa o sorteio. Mesma semente e mesmos parâmetros dão o mesmo resultado.</dd>
+      </dl>
+    </details>
+
+    <details class="mais">
+      <summary>Botões, atalhos e dúvidas comuns</summary>
+      <ul class="faq">
+        <li><strong>Telão</strong> (<kbd>T</kbd>): esconde os controles e aumenta a arena e o gráfico, para projetar em aula. <kbd>Esc</kbd> sai.</li>
+        <li><strong>Pausar / Continuar:</strong> congela o treino no fim das partidas em andamento.</li>
+        <li><strong>Parar:</strong> encerra o treino. O que já rodou fica salvo como “interrompido”.</li>
+        <li><strong>Limpar painel:</strong> zera a tela para um treino novo. Não apaga os resultados salvos.</li>
+        <li><strong>Excluir todos os resultados:</strong> apaga tudo o que foi salvo. Não dá para desfazer.</li>
+        <li><strong>Por que o melhor às vezes cai?</strong> Cada geração joga uma partida diferente, então a mesma estratégia pode pontuar mais ou menos. Por isso o resultado final usa partidas novas.</li>
+        <li><strong>A arena mostra “Reconectando”:</strong> a transmissão volta sozinha em poucos segundos.</li>
+      </ul>
+    </details>
+  </div>
+</details>
+
+<div class="layout">
+<main class="col-main" id="conteudo">
+
+  <section class="arena" id="arena" aria-labelledby="arena-h">
+    <div class="cab">
+      <h2 id="arena-h">Arena <span class="aovivo" id="aovivo" data-off>AO VIVO</span></h2>
+      <p class="nota" id="arena-nota">Mesma partida, mesma semente, lado a lado.</p>
+    </div>
+    <div class="duelo">
+      <figure class="lado aleatorio" id="lado-aleatorio">
+        <div class="tela" id="tela-aleatorio" data-alt="Agente aleatório jogando ao vivo">
+          <span class="fim-chip" id="fim-aleatorio" hidden>FIM</span>
+          <div class="tela-msg" id="msg-aleatorio"><b>Conectando…</b></div>
+        </div>
+        <figcaption>
+          <span class="quem">Agente aleatório<small>aperta botões ao acaso</small></span>
+          <span class="placar" id="placar-aleatorio" aria-label="Placar do agente aleatório">0<small>pontos</small></span>
+        </figcaption>
+      </figure>
+      <figure class="lado evoluido" id="lado-evoluido">
+        <div class="tela" id="tela-evoluido" data-alt="Melhor agente evoluído jogando ao vivo">
+          <span class="fim-chip" id="fim-evoluido" hidden>FIM</span>
+          <div class="tela-msg" id="msg-evoluido"><b>Conectando…</b></div>
+        </div>
+        <figcaption>
+          <span class="quem">Melhor evoluído<small id="evo-quem">ainda não há treino</small></span>
+          <span class="placar" id="placar-evoluido" aria-label="Placar do melhor agente evoluído">0<small>pontos</small></span>
+        </figcaption>
+      </figure>
+    </div>
+    <div class="veredito" id="veredito" aria-live="polite">
+      <span class="num" id="ver-num" data-vazio>—</span>
+      <span class="frase" id="ver-frase">Quando o treino começar, este quadro compara o melhor agente evoluído com o aleatório.</span>
+      <span class="fonte" id="ver-fonte"></span>
+    </div>
+  </section>
+
+  <section aria-labelledby="etapas-h">
+    <h2 class="sr" id="etapas-h">Etapa do ciclo evolutivo</h2>
+    <ol class="etapas" id="etapas">
+      <li data-e="populacao"><span>POPULAÇÃO</span></li>
+      <li data-e="avaliacao"><span>AVALIAÇÃO</span></li>
+      <li data-e="fitness"><span>FITNESS</span></li>
+      <li data-e="selecao"><span>SELEÇÃO</span></li>
+      <li data-e="mutacao"><span>MUTAÇÃO</span></li>
+      <li data-e="nova_geracao"><span>NOVA GERAÇÃO</span></li>
+    </ol>
+    <p class="etapa-txt" id="etapa-txt" aria-live="polite"></p>
+  </section>
+
+  <section class="card" aria-labelledby="evo-h">
+    <div class="cab"><h2 id="evo-h">Evolução do fitness</h2><p class="nota" id="evo-nota">fitness = pontos na partida</p></div>
+    <div class="evo-grid">
+      <div>
+        <ul class="legenda">
+          <li><i style="background:var(--s1)"></i>Melhor da geração</li>
+          <li><i style="background:var(--s2)"></i>Média da geração</li>
+          <li><i class="caixa" style="background:var(--band)"></i>Do pior ao melhor</li>
+          <li><i class="tracejada"></i>Agente aleatório</li>
+        </ul>
+        <div class="grafico"><canvas id="c-evo" role="img" aria-label="Gráfico da evolução do fitness por geração. Ainda sem dados."></canvas></div>
+        <p class="vazio" id="evo-vazio">As gerações aparecem aqui assim que o treino começa.</p>
+        <details class="tabela so-painel"><summary>Ver como tabela</summary><div class="tabela-wrap"><table id="t-evo"><caption class="sr">Fitness por geração</caption></table></div></details>
+      </div>
+      <dl class="numeros">
+        <div><dt>Geração</dt><dd><span class="v" id="k-ger">—</span><span class="d" id="k-ger-d">nenhum treino</span></dd></div>
+        <div><dt>Melhor desta geração</dt><dd><span class="v" id="k-melhor">—</span><span class="d" id="k-melhor-d">&nbsp;</span></dd></div>
+        <div><dt>Média desta geração</dt><dd><span class="v" id="k-media">—</span><span class="d" id="k-media-d">&nbsp;</span></dd></div>
+        <div><dt>Tempo de treino</dt><dd><span class="v" id="k-tempo">—</span><span class="d" id="k-tempo-d">&nbsp;</span></dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <div class="dois so-painel">
+    <section class="card" aria-labelledby="pop-h">
+      <div class="cab"><h2 id="pop-h">População da geração</h2><p class="nota" id="pop-nota"></p></div>
+      <ul class="legenda">
+        <li><i class="caixa" style="background:var(--s1)"></i>Agente avaliado</li>
+        <li><i class="caixa" style="background:var(--s4)"></i>Elite herdada, sem mutação</li>
+      </ul>
+      <div class="grafico baixo"><canvas id="c-pop" role="img" aria-label="Fitness de cada agente da geração atual. Ainda sem dados."></canvas></div>
+    </section>
+
+    <section class="card" aria-labelledby="replay-h">
+      <div class="cab"><h2 id="replay-h">Replay de um agente</h2></div>
+      <div class="replay">
+        <div class="tela" id="replay-tela"><div class="tela-msg"><span>Escolha um agente e clique em <b>Assistir</b>.</span></div></div>
+        <div class="replay-ctl">
+          <div><label for="w-fonte">Agente</label><select id="w-fonte"></select></div>
+          <div><label for="w-vel">Velocidade</label>
+            <select id="w-vel"><option value="1">1× (tempo real)</option><option value="2" selected>2×</option><option value="4">4×</option></select></div>
+          <button class="btn" id="b-assistir" type="button"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Assistir</button>
+          <button class="btn" id="b-fechar" type="button" disabled><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Fechar</button>
+          <p class="dica" id="replay-msg" role="status">Uma partida completa, do início ao fim. Até 3 pessoas por vez.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card so-painel" id="resultados" aria-labelledby="res-h">
+    <div class="cab"><h2 id="res-h">Resultados salvos</h2><p class="nota">marque até 4 para comparar as curvas</p></div>
+    <p class="destaque" id="melhor-exp" hidden></p>
+    <div class="tabela-wrap"><table id="t-exec"><caption class="sr">Execuções salvas e resultado contra o agente aleatório</caption></table></div>
+    <div class="cmp-wrap">
+      <ul class="legenda" id="cmp-legenda"></ul>
+      <div class="grafico baixo"><canvas id="c-cmp" role="img" aria-label="Comparação do melhor fitness por geração entre execuções"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card so-painel" aria-labelledby="log-h">
+    <div class="cab"><h2 id="log-h">Log</h2></div>
+    <div class="log" id="log" tabindex="0" aria-label="Registro de eventos do treino"></div>
+  </section>
+</main>
+
+<aside class="col-side so-painel" aria-label="Controle do treinamento">
+  <details class="card controle" id="controle">
+    <summary><h2>Controle do treinamento</h2><span class="chip" id="chip-acesso"><svg class="i" aria-hidden="true"><use href="#i-cadeado"/></svg><span>precisa de senha</span></span></summary>
+    <div class="controle-corpo">
+      <div class="acesso" id="acesso">
+        <div id="acesso-entrar">
+          <label for="senha">Senha de controle</label>
+          <div class="acesso-linha"><input id="senha" type="password" autocomplete="current-password" placeholder="digite a senha"><button class="btn" id="b-senha" type="button">Entrar</button></div>
+          <p class="dica" id="acesso-dica">Qualquer pessoa assiste; só quem tem a senha controla o treino.</p>
+        </div>
+        <div id="acesso-ok" hidden>
+          <p class="dica">Controles liberados neste navegador. <button class="lnk" id="b-sair" type="button">Sair</button></p>
+        </div>
+      </div>
+
+      <fieldset id="form">
+        <legend class="sr">Parâmetros do treinamento</legend>
+        <div class="campos">
+          <div class="cheio">
+            <label for="f-jogo">Jogo</label>
+            <select id="f-jogo">
+              <option value="asterix" selected>Asterix: 8 direções ou parado</option>
+              <option value="freeway">Freeway: subir, descer ou parado</option>
+            </select>
+          </div>
+          <div class="cheio">
+            <label for="f-exp">Experimento</label>
+            <select id="f-exp">
+              <option value="T">Todos: A, depois B, depois C</option>
+              <option value="A">A: taxa 1%, intensidade 0,05</option>
+              <option value="B" selected>B: taxa 10%, intensidade 0,20</option>
+              <option value="C">C: taxa 40%, intensidade 0,50</option>
+              <option value="P">Personalizado</option>
+            </select>
+          </div>
+          <div><label for="f-pop">População</label><input id="f-pop" type="number" min="4" max="100" value="20" inputmode="numeric"></div>
+          <div><label for="f-ger">Gerações</label><input id="f-ger" type="number" min="1" max="300" value="30" inputmode="numeric"></div>
+        </div>
+        <details class="avancado" style="margin-top:12px">
+          <summary>Avançado</summary>
+          <div class="campos">
+            <div><label for="f-taxa">Taxa de mutação</label><input id="f-taxa" type="number" min="0" max="1" step="0.01" value="0.10" inputmode="decimal"></div>
+            <div><label for="f-int">Intensidade</label><input id="f-int" type="number" min="0" max="5" step="0.01" value="0.20" inputmode="decimal"></div>
+            <div><label for="f-eli">Elite</label><input id="f-eli" type="number" min="1" max="20" value="2" inputmode="numeric"></div>
+            <div><label for="f-sem">Semente</label><input id="f-sem" type="number" min="0" value="42" inputmode="numeric"></div>
+            <div class="cheio"><label for="f-teste">Partidas de teste (aleatório × melhor)</label><input id="f-teste" type="number" min="0" max="30" value="10" inputmode="numeric"></div>
+          </div>
+        </details>
+        <p class="dica" id="estimativa"></p>
+      </fieldset>
+
+      <div class="acoes">
+        <button class="btn primario cheio" id="b-iniciar" type="button"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Iniciar treinamento</button>
+        <button class="btn" id="b-pausar" type="button"><svg class="i" aria-hidden="true"><use href="#i-pause"/></svg><span>Pausar</span></button>
+        <button class="btn perigo" id="b-parar" type="button"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Parar</button>
+        <button class="btn cheio" id="b-resetar" type="button"><svg class="i" aria-hidden="true"><use href="#i-reset"/></svg>Limpar painel</button>
+      </div>
+      <p class="msg" id="msg" role="status" aria-live="polite"></p>
+
+      <div class="perigo-zona">
+        <button class="btn perigo sm" id="b-excluir-tudo" type="button"><svg class="i" aria-hidden="true"><use href="#i-lixo"/></svg>Excluir todos os resultados</button>
+        <p class="dica">Apaga históricos e agentes salvos. Não dá para desfazer.</p>
+      </div>
+    </div>
+  </details>
+</aside>
+</div>
+
+<footer>Arcade Learning Environment (Gymnasium) · entrada: RAM do Atari (128 bytes) · <span id="ft-jogo">ALE/Asterix-v5</span></footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const $$ = (sel) => document.querySelectorAll(sel);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (n, d = 0) => n == null ? "—" : Number(n).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const STATUS = { parado: "Parado", rodando: "Treinando", pausado: "Pausado", concluido: "Concluído", interrompido: "Interrompido", erro: "Erro", offline: "Sem conexão" };
+const ETAPA_TXT = {
+  baseline: "Medindo o agente aleatório, a régua de comparação…",
+  populacao: "Criando a população inicial com pesos aleatórios…",
+  avaliacao: "Cada agente da geração está jogando uma partida…",
+  fitness: "Calculando a nota (fitness) de cada agente…",
+  selecao: "Escolhendo os pais por torneio…",
+  mutacao: "Gerando filhos com pequenas mudanças nos pesos…",
+  nova_geracao: "Montando a nova geração (elite + filhos)…",
+  teste: "Testando o melhor agente em partidas que ele nunca viu…",
+};
+const EXP = { A: [0.01, 0.05], B: [0.10, 0.20], C: [0.40, 0.50] };
+const JOGOS = {
+  asterix: { nome: "Asterix", env: "ALE/Asterix-v5", acoes: 9, acoesTxt: "8 direções ou ficar parado", unidade: "pontos", seg: 0.3 },
+  freeway: { nome: "Freeway", env: "ALE/Freeway-v5", acoes: 3, acoesTxt: "subir, descer ou ficar parado", unidade: "travessias", seg: 3.3 },
+};
+const jogoDe = (cfg) => (cfg && cfg.jogo) || "freeway";
+const emAndamento = (s) => s === "rodando" || s === "pausado";
+const ehAtalhoLivre = (ev) => !ev.ctrlKey && !ev.metaKey && !ev.altKey && !/^(INPUT|SELECT|TEXTAREA)$/.test(ev.target.tagName);
+
+let estado = null, arenaPlacar = null, execucoes = [], comparar = new Set(), cache = {}, cmpIniciado = false;
+let senha = "", autenticado = false, falhas = 0, cruzouAntes = false;
+try { senha = localStorage.getItem("neuro-senha") || ""; } catch (e) {}
+
+/* ---------- tema ---------- */
+try { const t = localStorage.getItem("neuro-tema"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("b-tema").onclick = () => {
+  const escuro = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.dataset.theme = escuro ? "light" : "dark";
+  try { localStorage.setItem("neuro-tema", document.documentElement.dataset.theme); } catch (e) {}
+  recolorir();
+};
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => recolorir());
+
+/* ---------- telão ---------- */
+function telao(ligar) {
+  document.body.classList.toggle("telao", ligar);
+  const url = new URL(location.href);
+  if (ligar) url.searchParams.set("telao", "1"); else url.searchParams.delete("telao");
+  history.replaceState(null, "", url);
+  setTimeout(() => { evo.resize(); }, 50);
+}
+$("b-telao").onclick = () => telao(true);
+$("b-sair-telao").onclick = () => telao(false);
+if (new URLSearchParams(location.search).get("telao")) document.body.classList.add("telao");
+document.addEventListener("keydown", (ev) => {
+  if (!ehAtalhoLivre(ev)) return;
+  if (ev.key === "t" || ev.key === "T") telao(!document.body.classList.contains("telao"));
+  else if (ev.key === "Escape" && document.body.classList.contains("telao")) telao(false);
+  else if (ev.key === "?") { abrirTutorial(); }
+});
+
+/* ---------- tutorial ---------- */
+let tutorialEscolhido = null;
+try { tutorialEscolhido = localStorage.getItem("neuro-tutorial"); } catch (e) {}
+if (tutorialEscolhido === "aberto") $("tutorial").open = true;
+$("tutorial").addEventListener("toggle", () => {
+  tutorialEscolhido = $("tutorial").open ? "aberto" : "fechado";
+  try { localStorage.setItem("neuro-tutorial", tutorialEscolhido); } catch (e) {}
+});
+function abrirTutorial() { telao(false); $("tutorial").open = true; $("tutorial").scrollIntoView({ behavior: "smooth", block: "start" }); }
+$("b-ajuda").onclick = (ev) => { ev.preventDefault(); abrirTutorial(); };
+
+/* ---------- gráficos ---------- */
+Chart.defaults.font.family = '"Atkinson Hyperlegible", system-ui, sans-serif';
+Chart.defaults.font.size = 14;
+Chart.defaults.animation = false;
+
+function eixos(yTitulo, xTitulo = "Geração") {
+  return {
+    x: { grid: { color: css("--grid") }, border: { color: css("--axis") }, ticks: { color: css("--ink-2") }, title: { display: true, text: xTitulo, color: css("--ink-2") } },
+    y: { beginAtZero: true, grid: { color: css("--grid") }, border: { display: false }, ticks: { color: css("--ink-2"), precision: 0 }, title: { display: true, text: yTitulo, color: css("--ink-2") } },
+  };
+}
+function dicaGrafico() {
+  return { backgroundColor: css("--surface"), titleColor: css("--ink"), bodyColor: css("--ink-2"), borderColor: css("--axis"), borderWidth: 1, padding: 10, usePointStyle: true, boxPadding: 4, titleFont: { weight: "700" } };
+}
+// Escreve o valor do aleatório na ponta da linha tracejada: é ela que prova o aprendizado.
+const rotuloAleatorio = {
+  id: "rotuloAleatorio",
+  afterDatasetsDraw(ch) {
+    const ds = ch.data.datasets[3];
+    if (!ds.data.length) return;
+    const meta = ch.getDatasetMeta(3), p = meta.data[meta.data.length - 1];
+    if (!p) return;
+    const ctx = ch.ctx;
+    ctx.save();
+    ctx.font = '700 14px "Atkinson Hyperlegible", system-ui, sans-serif';
+    ctx.fillStyle = css("--ink");
+    ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+    ctx.fillText(`aleatório: ${fmt(ds.data[0])}`, ch.chartArea.right - 4, p.y - 6);
+    ctx.restore();
+  },
+};
+
+const evo = new Chart($("c-evo"), {
+  type: "line",
+  data: { labels: [], datasets: [
+    { label: "Pior", data: [], borderWidth: 0, pointRadius: 0, fill: false },
+    { label: "Melhor", data: [], borderWidth: 3, pointRadius: 2.5, pointHoverRadius: 6, fill: "-1" },
+    { label: "Média", data: [], borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 6 },
+    { label: "Agente aleatório", data: [], borderWidth: 2.5, borderDash: [7, 5], pointRadius: 0, pointHoverRadius: 0 },
+  ]},
+  options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+    plugins: { legend: { display: false }, tooltip: { ...dicaGrafico(), callbacks: { title: (it) => "Geração " + it[0].label, label: (c) => ` ${c.dataset.label}: ${fmt(c.parsed.y, c.datasetIndex >= 2 ? 1 : 0)}` } } },
+    scales: eixos("Fitness") },
+  plugins: [rotuloAleatorio],
+});
+
+const pop = new Chart($("c-pop"), {
+  type: "bar",
+  data: { labels: [], datasets: [{ label: "Fitness", data: [], borderRadius: 4, borderSkipped: "start", maxBarThickness: 24 }] },
+  options: { maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { ...dicaGrafico(), callbacks: { title: (it) => "Agente " + it[0].label, label: (c) => ` Fitness: ${c.raw == null ? "jogando…" : fmt(c.raw)}` } } },
+    scales: { ...eixos("Fitness", "Agente"), x: { ...eixos("Fitness", "Agente").x, grid: { display: false } } } },
+});
+
+const cmp = new Chart($("c-cmp"), {
+  type: "line",
+  data: { labels: [], datasets: [] },
+  options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+    plugins: { legend: { display: false }, tooltip: { ...dicaGrafico(), callbacks: { title: (it) => "Geração " + it[0].label } } },
+    scales: eixos("Melhor fitness") },
+});
+
+function recolorir() {
+  evo.options.scales = eixos("Fitness");
+  pop.options.scales = { ...eixos("Fitness", "Agente"), x: { ...eixos("Fitness", "Agente").x, grid: { display: false } } };
+  cmp.options.scales = eixos("Melhor fitness");
+  for (const ch of [evo, pop, cmp]) Object.assign(ch.options.plugins.tooltip, dicaGrafico());
+  desenharEvo(); desenharPop(); desenharCmp();
+}
+
+function desenharEvo() {
+  const h = estado?.historico || [], base = estado?.baseline?.media;
+  $("evo-vazio").hidden = h.length > 0;
+  evo.data.labels = h.map((l) => l.geracao + 1);
+  const [pior, melhor, media, aleat] = evo.data.datasets;
+  pior.data = h.map((l) => l.pior); pior.borderColor = "transparent";
+  melhor.data = h.map((l) => l.melhor);
+  melhor.borderColor = melhor.pointBackgroundColor = css("--s1");
+  melhor.backgroundColor = css("--band"); melhor.pointBorderColor = css("--surface");
+  media.data = h.map((l) => l.media);
+  media.borderColor = media.pointBackgroundColor = css("--s2"); media.pointBorderColor = css("--surface");
+  aleat.data = base != null ? h.map(() => base) : [];
+  aleat.borderColor = css("--ink-2");
+  evo.update();
+  const ult = h[h.length - 1];
+  $("c-evo").setAttribute("aria-label", ult
+    ? `Evolução do fitness em ${h.length} gerações. Última geração: melhor ${fmt(ult.melhor)}, média ${fmt(ult.media, 1)}${base != null ? `, agente aleatório ${fmt(base, 1)}` : ""}.`
+    : "Gráfico da evolução do fitness por geração. Ainda sem dados.");
+  $("t-evo").innerHTML = `<caption class="sr">Fitness por geração</caption><tr><th>Geração</th><th class="n">Melhor</th><th class="n">Média</th><th class="n">Pior</th><th class="n">Desvio</th></tr>` +
+    h.map((l) => `<tr><td>${l.geracao + 1}</td><td class="n">${fmt(l.melhor)}</td><td class="n">${fmt(l.media, 1)}</td><td class="n">${fmt(l.pior)}</td><td class="n">${fmt(l.desvio, 1)}</td></tr>`).join("");
+}
+
+function desenharPop() {
+  const f = estado?.fitness_atual || [], elite = new Set(estado?.elite_atual || []);
+  pop.data.labels = f.map((_, i) => i + 1);
+  pop.data.datasets[0].data = f;
+  pop.data.datasets[0].backgroundColor = f.map((_, i) => elite.has(i) ? css("--s4") : css("--s1"));
+  pop.update();
+  const feitos = f.filter((v) => v != null).length;
+  $("pop-nota").textContent = f.length ? `${feitos} de ${f.length} já jogaram` : "";
+  $("c-pop").setAttribute("aria-label", f.length ? `Fitness dos ${f.length} agentes da geração; ${feitos} já jogaram.` : "Fitness de cada agente da geração atual. Ainda sem dados.");
+}
+
+const COR_CMP = ["--s1", "--s2", "--s3", "--s4"];
+async function desenharCmp() {
+  const ids = [...comparar];
+  try { for (const id of ids) if (!cache[id]) cache[id] = await (await fetch(`/api/execucoes/${id}`)).json(); } catch (e) { return; }
+  const maxG = Math.max(0, ...ids.map((id) => cache[id].historico.length));
+  cmp.data.labels = Array.from({ length: maxG }, (_, i) => i + 1);
+  cmp.data.datasets = ids.map((id, i) => ({
+    label: nomeExec(cache[id]), data: cache[id].historico.map((l) => l.melhor),
+    borderColor: css(COR_CMP[i]), pointBackgroundColor: css(COR_CMP[i]), pointBorderColor: css("--surface"),
+    borderWidth: 2.5, pointRadius: 2, pointHoverRadius: 6,
+  }));
+  cmp.update();
+  $("cmp-legenda").innerHTML = ids.length
+    ? ids.map((id, i) => `<li><i style="background:var(${COR_CMP[i]})"></i>${nomeExec(cache[id])}</li>`).join("")
+    : `<li>Marque até 4 resultados na tabela para comparar as curvas (por exemplo, A, B e C do mesmo jogo).</li>`;
+}
+
+/* ---------- nomes legíveis ---------- */
+function dataDe(id) {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(id || "");
+  return m ? `${m[3]}/${m[2]} ${m[4]}:${m[5]}` : id;
+}
+function nomeExp(c) { return EXP[c.experimento] ? `Experimento ${c.experimento}` : "Personalizado"; }
+function nomeExec(d) { return `${nomeExp(d.config)} · ${JOGOS[jogoDe(d.config)].nome} · ${dataDe(d.id)}`; }
+function razao(evol, aleat) { return evol != null && aleat > 0 ? evol / aleat : null; }
+
+/* ---------- arena ---------- */
+const arenaConexao = {};
+// A <img> nasce aqui, já com o endereço do stream; a cada reconexão entra uma nova.
+function conectarArena(lado, espera = 2000) {
+  const tela = $(`tela-${lado}`);
+  clearTimeout(arenaConexao[lado]?.timer);
+  arenaConexao[lado] = { erro: false };
+  const img = new Image();
+  img.alt = tela.dataset.alt;
+  img.onerror = () => {
+    arenaConexao[lado].erro = true;
+    img.remove();
+    mostrarMsgArena(lado, "Reconectando a transmissão…", `nova tentativa em ${Math.round(espera / 1000)} s`);
+    arenaConexao[lado].timer = setTimeout(() => conectarArena(lado, Math.min(espera * 2, 20000)), espera);
+  };
+  img.src = `/api/arena/${lado}?t=${Date.now()}`;
+  tela.querySelector("img")?.remove();
+  tela.prepend(img);
+}
+function mostrarMsgArena(lado, titulo, texto = "") {
+  const el = $(`msg-${lado}`);
+  if (!titulo) { el.hidden = true; return; }
+  el.innerHTML = `<b></b><span></span>`;
+  el.querySelector("b").textContent = titulo;
+  el.querySelector("span").textContent = texto;
+  el.hidden = false;
+}
+
+function renderArena() {
+  const a = arenaPlacar, e = estado;
+  const unidade = a?.unidade || JOGOS[e?.config ? jogoDe(e.config) : "asterix"].unidade;
+  const ativo = !!a?.ativo;
+  $("aovivo").toggleAttribute("data-off", !ativo);
+  for (const lado of ["aleatorio", "evoluido"]) {
+    const p = a?.[lado];
+    $(`placar-${lado}`).innerHTML = `${fmt(p ? p.pontos : 0)}<small>${unidade}${p ? ` · passo ${fmt(p.passos)}` : ""}</small>`;
+    $(`fim-${lado}`).hidden = !(p && p.fim);
+    if (arenaConexao[lado]?.erro) continue;
+    if (lado === "evoluido" && ativo && !p) {
+      mostrarMsgArena("evoluido", "Ainda não há agente evoluído",
+        emAndamento(e?.status) ? "Ele entra na arena quando a 1ª geração terminar." : "Inicie um treinamento para ele entrar na arena.");
+    } else if (!ativo) {
+      mostrarMsgArena(lado, "Conectando…");
+    } else {
+      mostrarMsgArena(lado, "");
+    }
+  }
+  const pa = a?.aleatorio, pe = a?.evoluido, terminou = pa?.fim && pe?.fim;
+  $("lado-evoluido").toggleAttribute("data-venceu", !!(terminou && pe.pontos > pa.pontos));
+  $("lado-aleatorio").toggleAttribute("data-venceu", !!(terminou && pa.pontos > pe.pontos));
+  $("evo-quem").textContent = pe
+    ? `campeão até a geração ${a.geracao}${a.experimento && EXP[a.experimento] ? ` · exp. ${a.experimento}` : ""}`
+    : (emAndamento(e?.status) ? "aguardando a 1ª geração" : "ainda não há treino");
+  $("arena-nota").textContent = ativo
+    ? `Rodada ${a.rodada}: mesma partida, mesma semente, lado a lado.${terminou ? (pe.pontos > pa.pontos ? " O evoluído venceu." : pe.pontos < pa.pontos ? " O aleatório venceu esta." : " Empate.") : ""}`
+    : "Mesma partida, mesma semente, lado a lado.";
+}
+
+/* ---------- veredito ---------- */
+function renderVeredito() {
+  const e = estado, h = e?.historico || [], ult = h[h.length - 1];
+  const base = e?.baseline?.media, unidade = JOGOS[e?.config ? jogoDe(e.config) : $("f-jogo").value].unidade;
+  let num = null, frase, fonte = "";
+  if (e?.teste && base != null) {
+    num = razao(e.teste.media, base);
+    fonte = `Em ${e.teste.episodios.length} partidas novas: evoluído ${fmt(e.teste.media, 1)} × aleatório ${fmt(base, 1)} ${unidade} (média).`;
+  } else if (ult && base != null) {
+    num = razao(ult.melhor, base);
+    fonte = `Melhor da geração ${ult.geracao + 1}: ${fmt(ult.melhor)} ${unidade} numa partida · aleatório: ${fmt(base, 1)} (média de ${e.baseline.episodios.length}). A medida final vem do teste em partidas novas.`;
+  } else if (emAndamento(e?.status)) {
+    frase = e?.etapa === "baseline" ? "Medindo o agente aleatório para servir de régua…" : "Aguardando a primeira geração terminar…";
+  } else {
+    const r = melhorResultado();
+    if (r) { num = r.r; fonte = `Último resultado salvo: ${nomeExp(r.x.config)}, ${fmt(r.x.teste, 1)} × ${fmt(r.x.baseline, 1)} ${unidade} em partidas novas.`; }
+    else frase = "Quando o treino começar, este quadro compara o melhor agente evoluído com o aleatório.";
+  }
+  if (num != null) {
+    frase = num >= 1.05 ? `O agente evoluído faz ${fmt(num, 1)}× os ${unidade} do aleatório.`
+      : num >= 0.95 ? "Por enquanto, empatado com o aleatório."
+      : "Ainda abaixo do aleatório. A evolução está só começando.";
+  }
+  $("ver-num").textContent = num != null ? `${fmt(num, 1)}×` : "—";
+  $("ver-num").toggleAttribute("data-vazio", num == null);
+  $("ver-frase").textContent = frase;
+  $("ver-fonte").textContent = fonte;
+  // O momento do trabalho: a curva passa da linha do aleatório.
+  const cruzou = num != null && num >= 1.05;
+  if (cruzou && !cruzouAntes && emAndamento(e?.status)) {
+    $("veredito").classList.add("cruzou");
+    setTimeout(() => $("veredito").classList.remove("cruzou"), 2400);
+  }
+  cruzouAntes = cruzou;
+}
+function melhorResultado() {
+  let melhor = null;
+  for (const x of execucoes) {
+    const r = razao(x.teste, x.baseline);
+    if (r != null && (!melhor || r > melhor.r)) melhor = { x, r };
+  }
+  return melhor;
+}
+
+/* ---------- estado ---------- */
+function tempo(s) {
+  s = Math.round(s || 0);
+  const m = Math.floor(s / 60), h = Math.floor(m / 60);
+  return h ? `${h}h${String(m % 60).padStart(2, "0")}` : `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function renderJogo(chave) {
+  const jg = JOGOS[chave];
+  $$(".jg-nome").forEach((el) => el.textContent = jg.nome);
+  $$(".jg-acoes").forEach((el) => el.textContent = jg.acoes);
+  $$(".jg-acoes-txt").forEach((el) => el.textContent = jg.acoesTxt);
+  $$(".jg-unidade").forEach((el) => el.textContent = jg.unidade);
+  $("ft-jogo").textContent = jg.env;
+  $("evo-nota").textContent = `fitness = ${jg.unidade} na partida`;
+}
+
+function render() {
+  const e = estado, andando = emAndamento(e.status);
+  renderJogo(e.config ? jogoDe(e.config) : $("f-jogo").value);
+  const s = falhas >= 2 ? "offline" : e.status;
+  $("status").dataset.s = s;
+  $("status-txt").textContent = STATUS[s] || s;
+
+  $("banner-erro").hidden = e.status !== "erro";
+  if (e.status === "erro") {
+    const ultimo = e.log[e.log.length - 1]?.msg || "";
+    $("erro-txt").textContent = `${e.erro || ""} ${ultimo && !ultimo.includes(e.erro || "§") ? `· ${ultimo}` : ""}`.trim() + " Corrija e inicie de novo; o que já rodou foi salvo.";
+  }
+
+  $$("#etapas li").forEach((li) => { if (li.dataset.e === e.etapa) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current"); });
+  $("etapa-txt").textContent = e.status === "pausado" ? "Pausado: o ciclo para no fim das partidas em andamento." : (ETAPA_TXT[e.etapa] || "");
+
+  const h = e.historico, ult = h[h.length - 1], ant = h[h.length - 2], totalG = e.config?.geracoes;
+  $("k-ger").textContent = e.config ? `${Math.min(e.geracao + 1, totalG)} de ${totalG}` : "—";
+  const fila = e.fila && e.fila.length > 1 ? ` (${e.posicao_fila + 1} de ${e.fila.length})` : "";
+  $("k-ger-d").textContent = e.config ? `${nomeExp(e.config)}${fila} · taxa ${fmt(e.config.taxa * 100)}% · int. ${fmt(e.config.intensidade, 2)}` : "nenhum treino";
+  $("k-melhor").textContent = ult ? fmt(ult.melhor) : "—";
+  $("k-melhor-d").textContent = e.melhor_global != null ? `recorde do treino: ${fmt(e.melhor_global)}` : " ";
+  $("k-media").textContent = ult ? fmt(ult.media, 1) : "—";
+  $("k-media-d").textContent = ult && ant ? `${ult.media >= ant.media ? "subiu" : "caiu"} ${fmt(Math.abs(ult.media - ant.media), 1)} em relação à anterior` : " ";
+  $("k-tempo").textContent = e.tempo ? tempo(e.tempo) : "—";
+  const feitas = (e.posicao_fila || 0) * (totalG || 0) + h.length, total = (e.fila?.length || 1) * (totalG || 0);
+  $("k-tempo-d").textContent = e.status === "rodando" && feitas ? `faltam uns ${tempo((e.tempo / (feitas + 0.5)) * (total - feitas))}` : " ";
+
+  renderControles();
+
+  const log = $("log"), noFim = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+  log.textContent = e.log.map((l) => `${new Date(l.t * 1000).toLocaleTimeString("pt-BR")}  ${l.msg}`).join("\n") || "Sem eventos ainda.";
+  if (noFim) log.scrollTop = log.scrollHeight;
+
+  desenharEvo(); desenharPop(); renderArena(); renderVeredito();
+}
+
+function renderControles() {
+  const e = estado, andando = emAndamento(e?.status), livre = autenticado || !e?.protegido;
+  $("acesso").hidden = !e?.protegido;
+  $("acesso-entrar").hidden = autenticado;
+  $("acesso-ok").hidden = !autenticado;
+  const chip = $("chip-acesso");
+  chip.querySelector("use").setAttribute("href", livre ? "#i-aberto" : "#i-cadeado");
+  chip.querySelector("span").textContent = livre ? (andando ? "treino em andamento" : "liberado") : "precisa de senha";
+  $("form").disabled = !livre || andando;
+  $("b-iniciar").disabled = !livre || andando;
+  $("b-pausar").disabled = !livre || !andando;
+  $("b-pausar").querySelector("span").textContent = e?.status === "pausado" ? "Continuar" : "Pausar";
+  $("b-pausar").querySelector("use").setAttribute("href", e?.status === "pausado" ? "#i-play" : "#i-pause");
+  $("b-parar").disabled = !livre || !andando;
+  $("b-resetar").disabled = !livre || andando || e?.status === "parado";
+  $("b-excluir-tudo").disabled = !livre || andando;
+  if (!andando) sincTaxa();
+}
+
+let ultimoStatus = null, ultimoHist = -1, primeiraVez = true;
+async function atualizar() {
+  try {
+    const r = await fetch("/api/estado", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const novo = await r.json();
+    estado = novo; arenaPlacar = novo.arena;
+    falhas = 0;
+    $("banner-conexao").hidden = true;
+    if (primeiraVez) {
+      primeiraVez = false;
+      // Primeira visita sem treino rodando: o tutorial já vem aberto.
+      if (tutorialEscolhido === null && !emAndamento(estado.status)) $("tutorial").open = true;
+      if (!estado.protegido) autenticado = true;
+      $("controle").open = autenticado || !estado.protegido;
+    }
+    render();
+    if (estado.status !== ultimoStatus || estado.historico.length !== ultimoHist) {
+      if (estado.id) delete cache[estado.id];
+      ultimoStatus = estado.status; ultimoHist = estado.historico.length;
+      carregarExecucoes();
+    }
+  } catch (err) {
+    falhas++;
+    if (falhas >= 2) {
+      $("banner-conexao").hidden = false;
+      $("status").dataset.s = "offline"; $("status-txt").textContent = STATUS.offline;
+    }
+  }
+}
+
+/* ---------- resultados ---------- */
+async function carregarExecucoes() {
+  try { execucoes = await (await fetch("/api/execucoes", { cache: "no-store" })).json(); } catch (e) { return; }
+  if (!cmpIniciado) { execucoes.slice(0, 3).forEach((x) => comparar.add(x.id)); cmpIniciado = execucoes.length > 0; }
+  for (const id of [...comparar]) if (!execucoes.find((x) => x.id === id)) comparar.delete(id);
+  const livre = autenticado || !estado?.protegido;
+
+  const melhor = melhorResultado();
+  $("melhor-exp").hidden = !melhor;
+  if (melhor) {
+    const u = JOGOS[jogoDe(melhor.x.config)].unidade;
+    $("melhor-exp").innerHTML = `<strong>Melhor resultado:</strong> ${nomeExp(melhor.x.config)} (${JOGOS[jogoDe(melhor.x.config)].nome}) fez <strong>${fmt(melhor.r, 1)}×</strong> o aleatório em partidas novas: ${fmt(melhor.x.teste, 1)} × ${fmt(melhor.x.baseline, 1)} ${u}.`;
+  }
+
+  $("t-exec").innerHTML = `<caption class="sr">Execuções salvas e resultado contra o agente aleatório</caption>` + (execucoes.length
+    ? `<tr><th><span class="sr">Comparar</span></th><th>Experimento</th><th>Status</th><th class="n">Gerações</th><th class="n">Melhor no treino</th><th class="n">Aleatório</th><th class="n">Evoluído (teste)</th><th class="n">Resultado</th><th><span class="sr">Ações</span></th></tr>` +
+      execucoes.map((x) => {
+        const c = x.config, r = razao(x.teste, x.baseline), nome = nomeExec(x);
+        return `<tr>
+        <td><input type="checkbox" data-cmp="${x.id}" ${comparar.has(x.id) ? "checked" : ""} aria-label="Comparar ${nome}"></td>
+        <td>${x.origem === "relatorio" ? `<span class="tag">RELATÓRIO</span>` : ""}<strong>${nomeExp(c)}</strong><span class="det">${JOGOS[jogoDe(c)].nome} · taxa ${fmt(c.taxa * 100)}% · int. ${fmt(c.intensidade, 2)} · pop. ${c.populacao} · ${dataDe(x.id)}</span></td>
+        <td>${STATUS[x.status] || x.status}</td>
+        <td class="n">${x.geracoes_rodadas} de ${c.geracoes}</td>
+        <td class="n">${fmt(x.melhor)}</td>
+        <td class="n">${fmt(x.baseline, 1)}</td>
+        <td class="n">${fmt(x.teste, 1)}</td>
+        <td class="n">${r != null ? `<span class="razao ${r >= 1.05 ? "bom" : ""}">${fmt(r, 1)}×</span>` : "—"}</td>
+        <td><span class="acoes-linha">
+          <a class="lnk" href="/api/execucoes/${x.id}/csv"><svg class="i" aria-hidden="true"><use href="#i-baixar"/></svg>CSV<span class="sr"> de ${nome}</span></a>
+          ${x.tem_agente ? `<button class="lnk" type="button" data-ver="${x.id}"><svg class="i" aria-hidden="true"><use href="#i-olho"/></svg>Assistir<span class="sr"> ${nome}</span></button>` : ""}
+          ${livre ? `<button class="lnk perigo" type="button" data-del="${x.id}"><svg class="i" aria-hidden="true"><use href="#i-lixo"/></svg>Excluir<span class="sr"> ${nome}</span></button>` : ""}
+        </span></td>
+      </tr>`; }).join("")
+    : `<tr><td class="vazio">Nenhum resultado salvo ainda. Cada experimento aparece aqui quando termina (ou quando é parado).</td></tr>`);
+
+  const sel = $("w-fonte"), atual = sel.value;
+  sel.innerHTML = Object.entries(JOGOS).map(([k, j]) => `<option value="aleatorio:${k}">Agente aleatório · ${j.nome}</option>`).join("") +
+    execucoes.filter((x) => x.tem_agente).map((x) => `<option value="${x.id}">Melhor do ${nomeExec(x)} (${fmt(x.melhor)})</option>`).join("");
+  if ([...sel.options].some((o) => o.value === atual)) sel.value = atual;
+  desenharCmp(); renderVeredito();
+}
+
+$("t-exec").addEventListener("change", (ev) => {
+  const id = ev.target.dataset.cmp; if (!id) return;
+  if (ev.target.checked) {
+    if (comparar.size >= 4) { ev.target.checked = false; return aviso("Compare no máximo 4 resultados por vez.", true); }
+    comparar.add(id);
+  } else comparar.delete(id);
+  desenharCmp();
+});
+$("t-exec").addEventListener("click", async (ev) => {
+  const alvo = ev.target.closest("[data-ver],[data-del]"); if (!alvo) return;
+  const ver = alvo.dataset.ver, del = alvo.dataset.del;
+  if (ver) { $("w-fonte").value = ver; assistir(); $("replay-tela").scrollIntoView({ behavior: "smooth", block: "center" }); }
+  if (del) {
+    const x = execucoes.find((i) => i.id === del);
+    if (!confirm(`Excluir “${x ? nomeExec(x) : del}”? Isso apaga o histórico e o agente salvo, e não dá para desfazer.`)) return;
+    if (await acao(`/api/execucoes/${del}`, "DELETE")) { comparar.delete(del); delete cache[del]; aviso("Resultado excluído."); carregarExecucoes(); }
+  }
+});
+
+/* ---------- controles ---------- */
+function aviso(t, erro = false) { $("msg").textContent = t; $("msg").className = "msg" + (erro ? " err" : ""); }
+
+async function acao(url, metodo = "POST", corpo) {
+  let r;
+  try {
+    r = await fetch(url, { method: metodo, headers: { "Content-Type": "application/json", "X-Senha": senha }, body: corpo ? JSON.stringify(corpo) : undefined });
+  } catch (e) { aviso("Não foi possível falar com o servidor. Verifique a conexão e tente de novo.", true); return null; }
+  if (r.ok) { aviso(""); return await r.json(); }
+  let d = "A operação falhou.";
+  try { const j = await r.json(); d = typeof j.detail === "string" ? j.detail : "Há valores inválidos no formulário. Confira os campos e tente de novo."; } catch (e) {}
+  if (r.status === 401) { autenticado = false; d = "A senha não vale mais. Entre de novo para controlar o treino."; renderControles(); }
+  aviso(d, true);
+  return null;
+}
+
+function sincTaxa() {
+  const exp = $("f-exp").value, personalizado = exp === "P", todos = exp === "T";
+  if (EXP[exp]) { $("f-taxa").value = EXP[exp][0]; $("f-int").value = EXP[exp][1]; }
+  if (todos) { $("f-taxa").value = ""; $("f-int").value = ""; $("f-taxa").placeholder = $("f-int").placeholder = "A, B e C"; }
+  $("f-taxa").disabled = $("f-int").disabled = !personalizado;
+  const p = +$("f-pop").value || 0, g = +$("f-ger").value || 0, n = todos ? 3 : 1;
+  const seg = JOGOS[$("f-jogo").value].seg, s = (n * p * g * seg) / (estado?.processos || 2);
+  $("estimativa").textContent = p && g ? `Leva cerca de ${tempo(s)} (${n * p * g} partidas). Agentes melhores jogam mais tempo, então o fim costuma demorar mais.` : "";
+}
+["f-jogo", "f-exp", "f-pop", "f-ger"].forEach((id) => $(id).addEventListener("input", () => { sincTaxa(); if (id === "f-jogo" && !estado?.config) renderJogo($("f-jogo").value); }));
+
+$("b-iniciar").onclick = async () => {
+  const cfg = { jogo: $("f-jogo").value, experimento: $("f-exp").value, taxa: +$("f-taxa").value || 0, intensidade: +$("f-int").value || 0,
+    populacao: +$("f-pop").value, geracoes: +$("f-ger").value, elite: +$("f-eli").value,
+    semente: +$("f-sem").value, episodios_teste: +$("f-teste").value };
+  const r = await acao("/api/iniciar", "POST", cfg);
+  if (r) { estado = { ...r, arena: arenaPlacar }; aviso("Treinamento iniciado. A arena troca para o campeão a cada rodada."); render(); $("arena").scrollIntoView({ behavior: "smooth", block: "start" }); }
+};
+$("b-pausar").onclick = async () => { const r = await acao(estado.status === "pausado" ? "/api/continuar" : "/api/pausar"); if (r) { estado = r; render(); } };
+$("b-parar").onclick = async () => { if (confirm("Parar o treinamento? O que já rodou fica salvo como “interrompido”.")) { const r = await acao("/api/parar"); if (r) { estado = r; render(); } } };
+$("b-resetar").onclick = async () => {
+  if (!confirm("Limpar o painel para um treino novo? Os resultados salvos continuam na tabela.")) return;
+  const r = await acao("/api/resetar"); if (r) { estado = r; aviso("Painel limpo."); render(); }
+};
+$("b-excluir-tudo").onclick = async () => {
+  if (!execucoes.length) return aviso("Não há resultados salvos para excluir.");
+  if (!confirm(`Excluir TODOS os ${execucoes.length} resultados salvos (históricos e agentes) e limpar o painel? Não dá para desfazer.`)) return;
+  const r = await acao("/api/execucoes", "DELETE");
+  if (r) { comparar.clear(); cache = {}; fecharReplay(); aviso(`${r.removidas} resultados excluídos.`); ultimoStatus = null; atualizar(); }
+};
+
+$("senha").value = senha;
+async function entrar() {
+  const tentativa = $("senha").value;
+  let ok = false;
+  try { ok = (await fetch("/api/senha", { method: "POST", headers: { "X-Senha": tentativa } })).ok; } catch (e) {}
+  if (ok) {
+    senha = tentativa; autenticado = true;
+    try { localStorage.setItem("neuro-senha", senha); } catch (e) {}
+    aviso("Senha confirmada. Controles liberados neste navegador.");
+  } else {
+    $("acesso-dica").textContent = "Senha incorreta. Confira e tente de novo.";
+  }
+  renderControles(); carregarExecucoes();
+}
+$("b-senha").onclick = entrar;
+$("senha").addEventListener("keydown", (ev) => { if (ev.key === "Enter") entrar(); });
+$("b-sair").onclick = () => {
+  senha = ""; autenticado = false; $("senha").value = "";
+  try { localStorage.removeItem("neuro-senha"); } catch (e) {}
+  $("acesso-dica").textContent = "Você saiu. Digite a senha para controlar de novo.";
+  renderControles(); carregarExecucoes();
+};
+(async () => {
+  if (!senha) return;
+  try { autenticado = (await fetch("/api/senha", { method: "POST", headers: { "X-Senha": senha } })).ok; } catch (e) {}
+  if (estado) { $("controle").open = autenticado || !estado.protegido; renderControles(); carregarExecucoes(); }
+})();
+
+/* ---------- replay ---------- */
+async function assistir() {
+  const [fonte, jogo] = $("w-fonte").value.split(":"), vel = $("w-vel").value;
+  let vagas = null;
+  try { vagas = await (await fetch("/api/assistir/vagas", { cache: "no-store" })).json(); } catch (e) {}
+  if (vagas && vagas.livres <= 0) {
+    $("replay-msg").textContent = `Os ${vagas.total} replays simultâneos estão em uso. Tente de novo em instantes; a arena continua ao vivo.`;
+    return;
+  }
+  const img = new Image();
+  const opcao = $("w-fonte").selectedOptions[0];
+  img.alt = `Replay: ${opcao ? opcao.textContent : "agente"} jogando`;
+  img.onerror = () => { $("replay-msg").textContent = "Não foi possível abrir o replay. Tente de novo em instantes."; fecharReplay(false); };
+  img.src = `/api/assistir?fonte=${encodeURIComponent(fonte)}&velocidade=${vel}${jogo ? "&jogo=" + jogo : ""}&t=${Date.now()}`;
+  $("replay-tela").replaceChildren(img);
+  $("b-fechar").disabled = false;
+  $("replay-msg").textContent = "Uma partida completa, do início ao fim.";
+}
+function fecharReplay(limparMsg = true) {
+  $("replay-tela").innerHTML = `<div class="tela-msg"><span>Escolha um agente e clique em <b>Assistir</b>.</span></div>`;
+  $("b-fechar").disabled = true;
+  if (limparMsg) $("replay-msg").textContent = "Uma partida completa, do início ao fim. Até 3 pessoas por vez.";
+}
+$("b-assistir").onclick = assistir;
+$("b-fechar").onclick = () => fecharReplay();
+
+conectarArena("aleatorio");
+conectarArena("evoluido");
+atualizar();
+setInterval(atualizar, 1500);
+</script>
+</body>
+</html>
